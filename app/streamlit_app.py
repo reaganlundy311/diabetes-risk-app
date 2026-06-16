@@ -38,9 +38,6 @@ DISCLAIMER = (
     "diagnostic tool. Talk to a qualified healthcare provider for any medical decision."
 )
 
-PUBLIC_APP_URL = "https://diabetes-risk-reagan-lundy.streamlit.app"
-
-
 def get_secret(name: str, default: str | None = None) -> str | None:
     try:
         return st.secrets.get(name, os.environ.get(name, default))
@@ -163,7 +160,6 @@ def main():
         st.title("Model card")
         st.caption("SciEncephalon AI · Summer Intern Series 2026")
         st.caption("Intern: Reagan Lundy")
-        st.link_button("Open public app", PUBLIC_APP_URL)
         st.markdown(
             "- **Model:** HistGradientBoosting + isotonic calibration.\n"
             "- **Inputs:** 8 non-invasive tabular features (Pima schema).\n"
