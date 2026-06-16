@@ -1,4 +1,4 @@
-""Streamlit app for Project 04 — Diabetes Risk.
+"""Streamlit app for Project 04 — Diabetes Risk.
 
 Run from the project root:
     streamlit run app/streamlit_app.py
