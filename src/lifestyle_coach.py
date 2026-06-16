@@ -1,19 +1,18 @@
-"""Lifestyle-coach STUB for Project 04.
+"""Lifestyle coach for Project 04.
 
 `llm_compose(patient_row)` reads the patient's most-actionable inputs
 (BMI, glucose, blood pressure, age) and returns a personalized, plain-English,
 DISCLAIMER-BOUNDED message.
 
-STRETCH GOAL: replace `llm_compose` body with a real OpenAI / Anthropic call.
-  1. pip install openai
-  2. Set OPENAI_API_KEY in your .env or VS Code launch.json env vars.
-  3. See the commented-out example at the bottom of this file.
+If an OpenAI API key is provided, `llm_compose` can use a live LLM. Otherwise it
+falls back to the deterministic template so the app always works.
 
 NEVER prescribe. NEVER dose. ALWAYS include "not medical advice".
 """
 
 from __future__ import annotations
 
+import os
 from typing import Iterable, Mapping
 
 DISCLAIMER = (
@@ -69,7 +68,7 @@ def _as_mapping(patient_row) -> Mapping:
     return dict(patient_row)
 
 
-def llm_compose(patient_row, risk: float | None = None) -> str:
+def template_compose(patient_row, risk: float | None = None) -> str:
     """Compose a templated lifestyle message from a single patient row.
 
     Parameters
@@ -119,6 +118,75 @@ def llm_compose(patient_row, risk: float | None = None) -> str:
     return "\n".join(lines)
 
 
+def _safe_patient_summary(patient_row) -> dict:
+    row = _as_mapping(patient_row)
+    keys = ["glucose", "bmi", "blood_pressure", "age", "dpf"]
+    return {key: row.get(key) for key in keys if key in row}
+
+
+def openai_compose(
+    patient_row,
+    risk: float | None = None,
+    api_key: str | None = None,
+    model: str = "gpt-4.1-mini",
+) -> str:
+    """Compose a lifestyle message using the OpenAI Responses API.
+
+    The prompt intentionally asks for education-only, non-prescriptive guidance.
+    If the API call fails, the caller should fall back to `template_compose`.
+    """
+    from openai import OpenAI
+
+    key = api_key or os.environ.get("OPENAI_API_KEY")
+    if not key:
+        raise ValueError("OPENAI_API_KEY is not configured")
+
+    summary = _safe_patient_summary(patient_row)
+    flags = ", ".join(triggered_flags(patient_row)) or "none"
+    risk_str = f"{max(0.0, min(1.0, float(risk))) * 100:.0f}%" if risk is not None else "unknown"
+    instructions = (
+        "You are an educational lifestyle coach for a diabetes-risk demo. "
+        "Give 2-4 short, empathetic, actionable lifestyle suggestions. "
+        "Do not diagnose. Do not prescribe medication. Do not mention doses. "
+        "Do not give specific calorie targets. Do not claim certainty. "
+        "End with this exact sentence: "
+        "\"Not medical advice. Talk to a qualified healthcare provider.\""
+    )
+    prompt = (
+        f"Model-estimated diabetes-risk probability: {risk_str}\n"
+        f"Patient summary: {summary}\n"
+        f"Triggered lifestyle flags: {flags}\n"
+        "Write for a general audience in plain English."
+    )
+    client = OpenAI(api_key=key)
+    response = client.responses.create(
+        model=model,
+        instructions=instructions,
+        input=prompt,
+        max_output_tokens=260,
+    )
+    text = response.output_text.strip()
+    if "not medical advice" not in text.lower():
+        text = f"{text}\n\nNot medical advice. Talk to a qualified healthcare provider."
+    return text
+
+
+def llm_compose(
+    patient_row,
+    risk: float | None = None,
+    api_key: str | None = None,
+    prefer_llm: bool = False,
+    model: str = "gpt-4.1-mini",
+) -> str:
+    """Compose a lifestyle message, using OpenAI when requested and configured."""
+    if prefer_llm:
+        try:
+            return openai_compose(patient_row, risk=risk, api_key=api_key, model=model)
+        except Exception:
+            return template_compose(patient_row, risk=risk)
+    return template_compose(patient_row, risk=risk)
+
+
 def triggered_flags(patient_row) -> Iterable[str]:
     """Return the list of rule keys that fired — handy for unit tests."""
     row = _as_mapping(patient_row)
@@ -130,32 +198,3 @@ def triggered_flags(patient_row) -> Iterable[str]:
         except (TypeError, ValueError):
             continue
     return out
-
-
-# ---------------------------------------------------------------------------
-# STRETCH GOAL — Real LLM version (Week 3+)
-# Uncomment and fill in your API key to replace the stub above.
-# ---------------------------------------------------------------------------
-# import os, openai
-#
-# def llm_compose(patient_row, risk=None):
-#     row = _as_mapping(patient_row)
-#     flags = ", ".join(triggered_flags(patient_row)) or "none"
-#     risk_str = f"{risk*100:.0f}%" if risk is not None else "unknown"
-#
-#     prompt = f"""You are a non-prescriptive lifestyle assistant.
-# Patient data (do NOT share back verbatim): {dict(row)}
-# Model risk estimate: {risk_str}
-# Triggered lifestyle flags: {flags}
-#
-# Give 2-4 short, empathetic, actionable lifestyle suggestions. 
-# Never prescribe medication, doses, or specific calorie counts.
-# End with exactly: "Not medical advice. Talk to a qualified healthcare provider."
-# """
-#     client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-#     resp = client.chat.completions.create(
-#         model="gpt-4o-mini",
-#         messages=[{"role": "user", "content": prompt}],
-#         max_tokens=300,
-#     )
-#     return resp.choices[0].message.content
