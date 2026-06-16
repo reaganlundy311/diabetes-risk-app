@@ -25,8 +25,9 @@
 ## 2. Intended use
 
 - **In scope.** Classroom demonstration of (a) calibrated probability
-  estimation, (b) sensitivity / specificity threshold sweeps, and (c) the
-  separation between a prediction layer and a messaging layer.
+  estimation, (b) sensitivity / specificity threshold sweeps, (c) lift/gain
+  targeting analysis, (d) subgroup performance review, and (e) the separation
+  between a prediction layer and a live-or-template messaging layer.
 - **Out of scope.** Clinical decision support, screening at the point of care,
   insurance underwriting, employment screening, or any use that affects a
   real person.
@@ -68,9 +69,12 @@ Reported on the held-out 25% test split with the default 0.50 threshold.
   default 0.50 threshold may not match your deployment context.
 - **Non-invasive inputs only.** True diagnosis requires A1C or fasting plasma
   glucose tests — this model does not replace them.
-- **Coach layer is templated.** `src/lifestyle_coach.py::llm_compose` is a
-  hand-written template, not an LLM. Even after stretch-goal replacement with a
-  real LLM call, the layer must NEVER prescribe, dose, or name specific drugs.
+- **Public app.** `https://diabetes-risk-reagan-lundy.streamlit.app` hosts the
+  Streamlit demo.
+- **Coach layer.** `src/lifestyle_coach.py::llm_compose` supports a live OpenAI
+  coach when `OPENAI_API_KEY` is configured, with a safe template fallback when
+  no key is available. The layer must NEVER prescribe, dose, or name specific
+  drugs.
 
 ## 6. Ethical considerations
 
