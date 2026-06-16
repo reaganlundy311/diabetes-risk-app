@@ -1,4 +1,4 @@
-"""Streamlit app for Project 04 — Diabetes Risk.
+""Streamlit app for Project 04 — Diabetes Risk.
 
 Run from the project root:
     streamlit run app/streamlit_app.py
@@ -37,6 +37,15 @@ DISCLAIMER = (
     "**Not medical advice.** This demo is an educational exercise. It is *not* a "
     "diagnostic tool. Talk to a qualified healthcare provider for any medical decision."
 )
+
+PUBLIC_APP_URL = "https://diabetes-risk-reagan-lundy.streamlit.app"
+
+
+def get_secret(name: str, default: str | None = None) -> str | None:
+    try:
+        return st.secrets.get(name, os.environ.get(name, default))
+    except Exception:
+        return os.environ.get(name, default)
 
 
 # ─────────────────────────────────────── model bootstrap (cached per session) ─
@@ -154,11 +163,13 @@ def main():
         st.title("Model card")
         st.caption("SciEncephalon AI · Summer Intern Series 2026")
         st.caption("Intern: Reagan Lundy")
+        st.link_button("Open public app", PUBLIC_APP_URL)
         st.markdown(
             "- **Model:** HistGradientBoosting + isotonic calibration.\n"
             "- **Inputs:** 8 non-invasive tabular features (Pima schema).\n"
             "- **Training data:** Real PIMA dataset when online; synthetic fallback if unavailable.\n"
             "- **Data cleanup:** impossible zero measurements are median-imputed.\n"
+            "- **AI coach:** OpenAI-powered when configured; safe template fallback otherwise.\n"
             "- **Intended use:** Educational only.\n"
             "- **Known limitation:** PIMA = Pima women only; generalization "
             "to other populations is **NOT** validated."
@@ -219,8 +230,23 @@ def main():
             label = "HIGH risk band" if risk >= threshold else "Below threshold"
             st.info(f"Decision: **{label}**")
 
-            st.subheader("Lifestyle suggestions")
-            msg = llm_compose(row.iloc[0], risk=risk)
+            st.subheader("AI Lifestyle Coach")
+            api_key = get_secret("OPENAI_API_KEY")
+            model_name = get_secret("OPENAI_MODEL", "gpt-4.1-mini")
+            use_live_coach = bool(api_key)
+            coach_mode = "OpenAI-powered AI coach" if use_live_coach else "Safe template AI coach"
+            st.info(
+                f"**{coach_mode}**\n\n"
+                "This OpenAI-style coach turns the risk estimate into plain-English lifestyle suggestions. "
+                "It is education-only and will not prescribe medication, doses, or calorie targets."
+            )
+            msg = llm_compose(
+                row.iloc[0],
+                risk=risk,
+                api_key=api_key,
+                prefer_llm=use_live_coach,
+                model=model_name or "gpt-4.1-mini",
+            )
             st.markdown(msg)
 
     # ── Charts ────────────────────────────────────────────────────────────────
