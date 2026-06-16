@@ -14,8 +14,6 @@ import sys
 import numpy as np
 import pandas as pd
 import streamlit as st
-from pyecharts import options as opts
-from pyecharts.charts import Line
 from sklearn.metrics import accuracy_score, brier_score_loss, recall_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 
@@ -117,64 +115,22 @@ def get_model_and_eval():
     }
 
 
-# ──────────────────────────────────────────────────────────── chart helper ──
+# ──────────────────────────────────────────────────────────── chart helpers ─
 
-def render_calibration_chart(centers, observed) -> str:
-    xs = [round(float(c), 3) for c in centers]
-    ys = [round(float(o), 3) for o in observed]
-    line = (
-        Line(init_opts=opts.InitOpts(width="100%", height="380px"))
-        .add_xaxis(xs)
-        .add_yaxis(
-            "Observed",
-            ys,
-            is_smooth=True,
-            linestyle_opts=opts.LineStyleOpts(width=3, color="#0076A3"),
-            symbol_size=10,
-        )
-        .add_yaxis(
-            "Perfect calibration",
-            xs,
-            linestyle_opts=opts.LineStyleOpts(type_="dashed", color="#9ca3af"),
-            symbol="none",
-        )
-        .set_global_opts(
-            title_opts=opts.TitleOpts(title="Calibration curve (test set)"),
-            xaxis_opts=opts.AxisOpts(name="Predicted probability"),
-            yaxis_opts=opts.AxisOpts(name="Observed fraction"),
-            tooltip_opts=opts.TooltipOpts(trigger="axis"),
-        )
-    )
-    return line.render_embed()
+def calibration_chart_data(centers, observed) -> pd.DataFrame:
+    return pd.DataFrame({
+        "Predicted probability": [float(x) for x in centers],
+        "Observed": [float(y) for y in observed],
+        "Perfect calibration": [float(x) for x in centers],
+    }).set_index("Predicted probability")
 
 
-def render_gain_chart(lift_gain: pd.DataFrame) -> str:
-    xs = [float(x) for x in lift_gain["target_population_pct"]]
-    ys = [float(y) for y in lift_gain["diabetic_patients_identified_pct"]]
-    line = (
-        Line(init_opts=opts.InitOpts(width="100%", height="360px"))
-        .add_xaxis(xs)
-        .add_yaxis(
-            "Model targeting",
-            ys,
-            is_smooth=True,
-            linestyle_opts=opts.LineStyleOpts(width=3, color="#0076A3"),
-            symbol_size=9,
-        )
-        .add_yaxis(
-            "Random targeting",
-            xs,
-            linestyle_opts=opts.LineStyleOpts(type_="dashed", color="#9ca3af"),
-            symbol="none",
-        )
-        .set_global_opts(
-            title_opts=opts.TitleOpts(title="Cumulative gain by population targeted"),
-            xaxis_opts=opts.AxisOpts(name="Population targeted (%)", min_=0, max_=100),
-            yaxis_opts=opts.AxisOpts(name="Diabetic patients identified (%)", min_=0, max_=100),
-            tooltip_opts=opts.TooltipOpts(trigger="axis"),
-        )
-    )
-    return line.render_embed()
+def gain_chart_data(lift_gain: pd.DataFrame) -> pd.DataFrame:
+    return pd.DataFrame({
+        "Population targeted (%)": lift_gain["target_population_pct"].astype(float),
+        "Model targeting": lift_gain["diabetic_patients_identified_pct"].astype(float),
+        "Random targeting": lift_gain["target_population_pct"].astype(float),
+    }).set_index("Population targeted (%)")
 
 
 # ──────────────────────────────────────────────────────────────── main app ──
@@ -285,7 +241,7 @@ def main():
         )
 
         st.subheader("Calibration curve")
-        st.components.v1.html(render_calibration_chart(centers, observed), height=420)
+        st.line_chart(calibration_chart_data(centers, observed), height=320)
         st.caption(
             "Well-calibrated: when the model says 70% it really happens ~70% of the time.  "
             "Well-calibrated is NOT the same as 'accurate'."
@@ -341,7 +297,7 @@ def main():
             height=390,
         )
     with lift_right:
-        st.components.v1.html(render_gain_chart(lift_gain), height=400)
+        st.line_chart(gain_chart_data(lift_gain), height=330)
         st.caption(
             "Example: if the 20% row shows 45% identified and 2.25x lift, the top-risk 20% contains "
             "45% of diabetic patients, which is 2.25 times better than random targeting."
