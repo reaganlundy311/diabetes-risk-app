@@ -89,6 +89,21 @@ streamlit run 04_diabetes_risk/app/streamlit_app.py
 5. **CDC BRFSS.** Replace PIMA with the CDC's BRFSS survey (400k+ rows). Beware
    schema differences — that's the lesson.
 
+## Week 3 implementation
+
+Both Week-3 options are implemented:
+
+- **Public Streamlit app.** Deployed at
+  `https://diabetes-risk-reagan-lundy.streamlit.app`.
+- **Live LLM coach.** `src/lifestyle_coach.py::llm_compose` uses the OpenAI API
+  when `OPENAI_API_KEY` is configured in Streamlit secrets, and falls back to the
+  safe template when no key is available.
+
+The Streamlit app includes patient inputs, calibrated risk prediction, threshold
+trade-offs, calibration chart, dataset comparison, 10-decile lift/gain analysis,
+subgroup performance audit, lifestyle suggestions, and prominent safety
+disclaimers.
+
 ## Week 2 implementation
 
 The project now uses the real PIMA dataset through `data/loader.py::load_pima`
@@ -102,6 +117,19 @@ The app also includes a 10-decile lift/gain targeting table. It ranks patients
 from highest to lowest predicted risk and reports the cumulative percent of
 diabetic patients identified by targeting the top 10%, 20%, 30%, and so on,
 along with lift values such as `1.2x` or `2.0x` versus random targeting.
+
+## Live LLM coach setup
+
+The lifestyle coach uses a safe template by default. To turn on the live OpenAI
+coach in Streamlit Cloud, open the app's settings, go to **Secrets**, and add:
+
+```toml
+OPENAI_API_KEY = "your-api-key-here"
+OPENAI_MODEL = "gpt-4.1-mini"
+```
+
+Do not commit API keys to GitHub. If no key is configured, the app automatically
+falls back to the template coach and still runs normally.
 
 ## Ethics checklist (must-haves before any demo)
 
