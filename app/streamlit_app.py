@@ -22,10 +22,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 
-from data.loader import load_pima, load_synthetic          # noqa: E402
+from data.loader import load_brfss, load_pima, load_synthetic, load_synthetic_brfss  # noqa: E402
 from src.lifestyle_coach import llm_compose                # noqa: E402
 from src.pipeline import (                                 # noqa: E402
     calibration_curve,
+    feature_attribution,
     lift_gain_table,
     predict_proba,
     threshold_sweep,
@@ -75,39 +76,43 @@ def evaluate_dataset(df: pd.DataFrame, label: str) -> dict:
     }
 
 
-@st.cache_resource(show_spinner="Training calibrated model on real PIMA data…")
-def get_model_and_eval():
-    pima_eval = evaluate_dataset(load_pima(clean=True), "Real PIMA, median-imputed")
-    synthetic_eval = evaluate_dataset(load_synthetic(n=600, seed=42), "Synthetic baseline")
+@st.cache_resource(show_spinner="Training calibrated model…")
+def get_model_and_eval(model_mode: str):
+    if model_mode == "CDC BRFSS survey model":
+        primary_eval = evaluate_dataset(load_brfss(sample_n=50000), "CDC BRFSS survey sample")
+        baseline_eval = evaluate_dataset(load_synthetic_brfss(n=10000, seed=42), "Synthetic BRFSS baseline")
+    else:
+        primary_eval = evaluate_dataset(load_pima(clean=True), "Real PIMA, median-imputed")
+        baseline_eval = evaluate_dataset(load_synthetic(n=600, seed=42), "Synthetic PIMA baseline")
 
-    model = pima_eval["model"]
-    Xte = pima_eval["X_test"]
-    yte = pima_eval["y_test"]
-    probs_te = pima_eval["probs_test"]
+    model = primary_eval["model"]
+    Xte = primary_eval["X_test"]
+    yte = primary_eval["y_test"]
+    probs_te = primary_eval["probs_test"]
     sweep = threshold_sweep(yte, probs_te)
     lift_gain = lift_gain_table(yte, probs_te, n_deciles=10)
     centers, observed, expected = calibration_curve(yte, probs_te, n_bins=10)
     comparison = pd.DataFrame([
         {
-            "dataset": synthetic_eval["label"],
-            "auc": synthetic_eval["auc"],
-            "accuracy": synthetic_eval["accuracy"],
-            "sensitivity": synthetic_eval["sensitivity"],
-            "specificity": synthetic_eval["specificity"],
-            "brier": synthetic_eval["brier"],
+            "dataset": baseline_eval["label"],
+            "auc": baseline_eval["auc"],
+            "accuracy": baseline_eval["accuracy"],
+            "sensitivity": baseline_eval["sensitivity"],
+            "specificity": baseline_eval["specificity"],
+            "brier": baseline_eval["brier"],
         },
         {
-            "dataset": pima_eval["label"],
-            "auc": pima_eval["auc"],
-            "accuracy": pima_eval["accuracy"],
-            "sensitivity": pima_eval["sensitivity"],
-            "specificity": pima_eval["specificity"],
-            "brier": pima_eval["brier"],
+            "dataset": primary_eval["label"],
+            "auc": primary_eval["auc"],
+            "accuracy": primary_eval["accuracy"],
+            "sensitivity": primary_eval["sensitivity"],
+            "specificity": primary_eval["specificity"],
+            "brier": primary_eval["brier"],
         },
     ])
     return {
         "model":        model,
-        "feature_cols": pima_eval["feature_cols"],
+        "feature_cols": primary_eval["feature_cols"],
         "X_test":       Xte,
         "y_test":       yte,
         "probs_test":   probs_te,
@@ -115,9 +120,10 @@ def get_model_and_eval():
         "lift_gain":    lift_gain,
         "calibration":  (centers, observed, expected),
         "fairness_bmi": subgroup_metrics(model, Xte, yte, by="bmi_bucket"),
-        "fairness_age": subgroup_metrics(model, Xte, yte, by="age_bucket"),
+        "fairness_age": subgroup_metrics(model, Xte, yte, by="age_bucket" if "age" in Xte.columns else "age_group"),
         "comparison":   comparison,
-        "data_source":  pima_eval["df"].attrs.get("source", "unknown"),
+        "data_source":  primary_eval["df"].attrs.get("source", "unknown"),
+        "model_mode":   model_mode,
     }
 
 
@@ -139,6 +145,30 @@ def gain_chart_data(lift_gain: pd.DataFrame) -> pd.DataFrame:
     }).set_index("Population targeted (%)")
 
 
+def friendly_feature_names(df: pd.DataFrame) -> pd.DataFrame:
+    labels = {
+        "bmi": "BMI",
+        "age": "Age",
+        "age_group": "Age group",
+        "sex_female": "Female sex indicator",
+        "high_bp": "High blood pressure history",
+        "general_health": "General health rating",
+        "physical_health_bad_days": "Physical-health bad days",
+        "mental_health_bad_days": "Mental-health bad days",
+        "checkup_within_year": "Checkup within past year",
+        "pregnancies": "Pregnancies",
+        "glucose": "Glucose",
+        "blood_pressure": "Blood pressure",
+        "skin_thickness": "Skin thickness",
+        "insulin": "Insulin",
+        "dpf": "Diabetes pedigree score",
+    }
+    out = df.copy()
+    if "feature" in out.columns:
+        out["feature"] = out["feature"].map(labels).fillna(out["feature"])
+    return out
+
+
 # ──────────────────────────────────────────────────────────────── main app ──
 
 def main():
@@ -148,7 +178,12 @@ def main():
         layout="wide",
     )
 
-    bundle = get_model_and_eval()
+    model_mode = st.sidebar.selectbox(
+        "Model/data source",
+        ["CDC BRFSS survey model", "PIMA clinical-style model"],
+        help="BRFSS is the broad CDC survey stretch goal. PIMA is kept as a smaller clinical-style comparison.",
+    )
+    bundle = get_model_and_eval(model_mode)
     model       = bundle["model"]
     feature_cols = bundle["feature_cols"]
     sweep       = bundle["sweep"]
@@ -162,13 +197,12 @@ def main():
         st.caption("Intern: Reagan Lundy")
         st.markdown(
             "- **Model:** HistGradientBoosting + isotonic calibration.\n"
-            "- **Inputs:** 8 non-invasive tabular features (Pima schema).\n"
-            "- **Training data:** Real PIMA dataset when online; synthetic fallback if unavailable.\n"
-            "- **Data cleanup:** impossible zero measurements are median-imputed.\n"
+            "- **Default data:** CDC BRFSS survey sample with synthetic fallback.\n"
+            "- **Alternate data:** PIMA clinical-style model remains available.\n"
+            "- **Explanations:** per-patient SHAP-style feature attribution.\n"
             "- **AI coach:** OpenAI-powered when configured; safe template fallback otherwise.\n"
             "- **Intended use:** Educational only.\n"
-            "- **Known limitation:** PIMA = Pima women only; generalization "
-            "to other populations is **NOT** validated."
+            "- **Known limitation:** Survey and PIMA models are educational, not clinical."
         )
         st.warning(DISCLAIMER)
 
@@ -184,16 +218,33 @@ def main():
         st.subheader("Patient inputs")
         with st.form("patient_form"):
             c1, c2 = st.columns(2)
-            with c1:
-                pregnancies    = st.number_input("Pregnancies", 0, 20, 1)
-                glucose        = st.number_input("Glucose (mg/dL)", 50, 250, 120)
-                blood_pressure = st.number_input("Diastolic BP (mm Hg)", 40, 130, 72)
-                skin_thickness = st.number_input("Skin thickness (mm)", 0, 80, 23)
-            with c2:
-                insulin  = st.number_input("Insulin (uU/mL)", 0, 800, 95)
-                bmi      = st.number_input("BMI", 12.0, 60.0, 28.0, step=0.1)
-                dpf      = st.number_input("Diabetes pedigree score", 0.05, 3.0, 0.45, step=0.01)
-                age      = st.number_input("Age", 18, 100, 40)
+            if model_mode == "CDC BRFSS survey model":
+                with c1:
+                    bmi = st.number_input("BMI", 12.0, 70.0, 29.0, step=0.1)
+                    age_group = st.selectbox(
+                        "Age group",
+                        list(range(1, 14)),
+                        index=6,
+                        format_func=lambda x: f"BRFSS age group {x}",
+                    )
+                    sex_female = st.selectbox("Sex", [0, 1], index=1, format_func=lambda x: "Female" if x else "Male")
+                    high_bp = st.selectbox("Ever told you had high blood pressure?", [0, 1], index=0, format_func=lambda x: "Yes" if x else "No")
+                with c2:
+                    general_health = st.selectbox("General health", [1, 2, 3, 4, 5], index=2, format_func=lambda x: ["Excellent", "Very good", "Good", "Fair", "Poor"][x - 1])
+                    physical_health_bad_days = st.number_input("Poor physical-health days in past month", 0, 30, 3)
+                    mental_health_bad_days = st.number_input("Poor mental-health days in past month", 0, 30, 4)
+                    checkup_within_year = st.selectbox("Routine checkup within past year?", [0, 1], index=1, format_func=lambda x: "Yes" if x else "No")
+            else:
+                with c1:
+                    pregnancies    = st.number_input("Pregnancies", 0, 20, 1)
+                    glucose        = st.number_input("Glucose (mg/dL)", 50, 250, 120)
+                    blood_pressure = st.number_input("Diastolic BP (mm Hg)", 40, 130, 72)
+                    skin_thickness = st.number_input("Skin thickness (mm)", 0, 80, 23)
+                with c2:
+                    insulin  = st.number_input("Insulin (uU/mL)", 0, 800, 95)
+                    bmi      = st.number_input("BMI", 12.0, 60.0, 28.0, step=0.1)
+                    dpf      = st.number_input("Diabetes pedigree score", 0.05, 3.0, 0.45, step=0.01)
+                    age      = st.number_input("Age", 18, 100, 40)
 
             threshold = st.slider(
                 "Decision threshold (cut-off for 'high risk')",
@@ -202,16 +253,30 @@ def main():
             submitted = st.form_submit_button("Estimate risk")
 
         if submitted:
-            row = pd.DataFrame([{
-                "pregnancies":    pregnancies,
-                "glucose":        glucose,
-                "blood_pressure": blood_pressure,
-                "skin_thickness": skin_thickness,
-                "insulin":        insulin,
-                "bmi":            bmi,
-                "dpf":            dpf,
-                "age":            age,
-            }])[feature_cols]
+            if model_mode == "CDC BRFSS survey model":
+                row = pd.DataFrame([{
+                    "bmi": bmi,
+                    "age_group": age_group,
+                    "sex_female": sex_female,
+                    "high_bp": high_bp,
+                    "general_health": general_health,
+                    "physical_health_bad_days": physical_health_bad_days,
+                    "mental_health_bad_days": mental_health_bad_days,
+                    "checkup_within_year": checkup_within_year,
+                }])[feature_cols]
+                coach_row = {"bmi": bmi, "age": 21 + int(age_group) * 5, "blood_pressure": 90 if high_bp else 72}
+            else:
+                row = pd.DataFrame([{
+                    "pregnancies":    pregnancies,
+                    "glucose":        glucose,
+                    "blood_pressure": blood_pressure,
+                    "skin_thickness": skin_thickness,
+                    "insulin":        insulin,
+                    "bmi":            bmi,
+                    "dpf":            dpf,
+                    "age":            age,
+                }])[feature_cols]
+                coach_row = row.iloc[0]
             risk = float(predict_proba(model, row)[0])
 
             nearest = sweep.iloc[(sweep["threshold"] - threshold).abs().argsort().iloc[0]]
@@ -237,13 +302,25 @@ def main():
                 "It is education-only and will not prescribe medication, doses, or calorie targets."
             )
             msg = llm_compose(
-                row.iloc[0],
+                coach_row,
                 risk=risk,
                 api_key=api_key,
                 prefer_llm=use_live_coach,
                 model=model_name or "gpt-4.1-mini",
             )
             st.markdown(msg)
+            st.subheader("Per-patient feature attribution")
+            explanation = friendly_feature_names(feature_attribution(model, row.iloc[0], bundle["X_test"]).head(6))
+            st.caption("Positive values pushed this patient's risk upward; negative values pushed it downward.")
+            st.dataframe(
+                explanation[["feature", "patient_value", "baseline_value", "risk_contribution", "direction", "method"]].style.format({
+                    "patient_value": "{:.2f}",
+                    "baseline_value": "{:.2f}",
+                    "risk_contribution": "{:+.3f}",
+                }),
+                hide_index=True,
+                height=260,
+            )
 
     # ── Charts ────────────────────────────────────────────────────────────────
     with col_right:
@@ -271,8 +348,8 @@ def main():
 
     st.subheader("Dataset comparison")
     st.caption(
-        "The app trains the main model on cleaned real PIMA data when the dataset URL is reachable. "
-        "PIMA zeros in glucose, blood pressure, skin thickness, insulin, and BMI are treated as missing values and replaced with medians."
+        "The default app trains on CDC BRFSS survey data when reachable and falls back to synthetic survey-shaped data if needed. "
+        "The PIMA mode remains available as a smaller clinical-style comparison with median-imputed zero measurements."
     )
     st.dataframe(
         bundle["comparison"].style.format({
@@ -284,10 +361,10 @@ def main():
         }),
         hide_index=True,
     )
-    if bundle["data_source"] == "synthetic_fallback":
+    if "fallback" in bundle["data_source"]:
         st.warning(
-            "The real PIMA URL was not reachable in this run, so the app used synthetic fallback data. "
-            "Run again with internet access for the real PIMA results."
+            "The selected public dataset was not reachable in this run, so the app used synthetic fallback data. "
+            "Run again with internet access for the real dataset results."
         )
 
     st.subheader("Lift and gain targeting analysis")
@@ -339,7 +416,7 @@ def main():
             height=220,
         )
     with fairness_right:
-        st.markdown("**Age buckets**")
+        st.markdown("**Age groups**")
         st.dataframe(
             bundle["fairness_age"].style.format({
                 "prevalence": "{:.2f}",
