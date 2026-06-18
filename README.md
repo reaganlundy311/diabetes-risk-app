@@ -91,18 +91,47 @@ streamlit run 04_diabetes_risk/app/streamlit_app.py
 
 ## Week 3 implementation
 
-Both Week-3 options are implemented:
+All stretch-goal directions are represented:
 
 - **Public Streamlit app.** Deployed at
   `https://diabetes-risk-reagan-lundy.streamlit.app`.
 - **Live LLM coach.** `src/lifestyle_coach.py::llm_compose` uses the OpenAI API
   when `OPENAI_API_KEY` is configured in Streamlit secrets, and falls back to the
   safe template when no key is available.
+- **Fairness audit.** The app compares subgroup metrics across BMI buckets and
+  age groups.
+- **SHAP-style explanations.** The app includes per-patient feature attribution
+  showing which inputs pushed a patient's predicted risk up or down.
+- **CDC BRFSS.** The default model path uses CDC BRFSS survey data when
+  reachable, with a synthetic BRFSS-shaped fallback if the large CDC file is not
+  available during deployment.
 
 The Streamlit app includes patient inputs, calibrated risk prediction, threshold
 trade-offs, calibration chart, dataset comparison, 10-decile lift/gain analysis,
 subgroup performance audit, lifestyle suggestions, and prominent safety
 disclaimers.
+
+## CDC BRFSS implementation
+
+`data/loader.py::load_brfss` loads CDC BRFSS 2022 from the public CDC XPT
+archive and maps the survey schema into model features: BMI, age group, sex,
+high-blood-pressure history, general-health rating, physical-health days,
+mental-health days, and checkup recency. Because BRFSS is much larger than PIMA,
+the app samples the cleaned rows for responsive Streamlit training. If the CDC
+file is unavailable, the app uses `load_synthetic_brfss` so demos still run.
+
+## Week 4 fairness write-up
+
+The subgroup audit compares model performance across BMI buckets and age groups.
+The largest gap I observed was in **sensitivity across age groups**: the model
+was much more likely to catch diabetic patients in older age groups than in
+younger age groups. This makes sense because diabetes prevalence is higher in
+older groups, so the model sees stronger risk patterns there. The concern is
+that lower sensitivity in younger groups means the model may miss more true
+diabetes cases for those users. Before any real-world use, this gap should be
+disclosed and investigated with more representative data, better threshold
+selection by subgroup, and clinical review. This app remains educational only
+and is not medical advice.
 
 ## Week 2 implementation
 
