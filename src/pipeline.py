@@ -12,6 +12,8 @@ threshold_sweep(y_true, y_prob, thresholds=None)
     Per-threshold sensitivity / specificity / F1 trade-off table.
 lift_gain_table(y_true, y_prob, n_deciles=10)
     Cumulative gain and lift by targeted population decile.
+feature_attribution(model, row, background)
+    Per-patient feature attribution: which inputs push risk up or down.
 
 This module is intentionally framework-light: scikit-learn + numpy + pandas only.
 Not medical advice — educational use only.
@@ -169,3 +171,76 @@ def lift_gain_table(y_true, y_prob, n_deciles: int = 10) -> pd.DataFrame:
         previous_n = target_n
 
     return pd.DataFrame(rows)
+
+
+# ------------------------------------------------------- feature attribution ---
+
+def feature_attribution(model, row, background: pd.DataFrame, prefer_shap: bool = True) -> pd.DataFrame:
+    """Estimate per-patient feature attribution for a probability prediction.
+
+    When the optional `shap` package is available, this uses SHAP's model-agnostic
+    explainer on a small background sample. If SHAP is unavailable or too slow,
+    it falls back to a fast one-feature-at-a-time median replacement method.
+    Positive values push the patient's risk up; negative values push it down.
+    """
+    if hasattr(row, "to_frame"):
+        patient = row.to_frame().T.copy()
+    else:
+        patient = pd.DataFrame([dict(row)])
+    patient = patient[background.columns]
+    if prefer_shap:
+        try:
+            import shap
+
+            bg = background.sample(min(50, len(background)), random_state=42)
+
+            def predict_fn(data):
+                frame = pd.DataFrame(data, columns=background.columns)
+                return predict_proba(model, frame)
+
+            explainer = shap.Explainer(predict_fn, bg)
+            shap_values = explainer(patient)
+            values = np.asarray(shap_values.values)
+            if values.ndim == 2:
+                contributions = values[0]
+            else:
+                contributions = values.reshape(-1)[: len(patient.columns)]
+            rows = []
+            for feature, contribution in zip(patient.columns, contributions):
+                rows.append({
+                    "feature": feature,
+                    "patient_value": float(patient.iloc[0][feature]),
+                    "baseline_value": float(bg[feature].median()),
+                    "risk_contribution": round(float(contribution), 4),
+                    "direction": "pushes risk up" if contribution >= 0 else "pushes risk down",
+                    "method": "SHAP",
+                })
+            return (
+                pd.DataFrame(rows)
+                .sort_values("risk_contribution", key=lambda s: s.abs(), ascending=False)
+                .reset_index(drop=True)
+            )
+        except Exception:
+            pass
+
+    baseline_values = background.median(numeric_only=True)
+    base_prob = float(predict_proba(model, patient)[0])
+    rows = []
+    for feature in patient.columns:
+        perturbed = patient.copy()
+        perturbed[feature] = baseline_values[feature]
+        perturbed_prob = float(predict_proba(model, perturbed)[0])
+        contribution = base_prob - perturbed_prob
+        rows.append({
+            "feature": feature,
+            "patient_value": float(patient.iloc[0][feature]),
+            "baseline_value": float(baseline_values[feature]),
+            "risk_contribution": round(contribution, 4),
+            "direction": "pushes risk up" if contribution >= 0 else "pushes risk down",
+            "method": "median replacement",
+        })
+    return (
+        pd.DataFrame(rows)
+        .sort_values("risk_contribution", key=lambda s: s.abs(), ascending=False)
+        .reset_index(drop=True)
+    )
