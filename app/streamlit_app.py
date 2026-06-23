@@ -442,7 +442,7 @@ def main():
 
     bmi_gap = largest_subgroup_gap(bundle["fairness_bmi"])
     age_gap = largest_subgroup_gap(bundle["fairness_age"])
-    st.markdown("**Week 4 fairness conclusion**")
+    st.markdown("**Model performance across groups**")
     st.info(
         f"The largest sensitivity gap in this run is **{age_gap['gap']:.2f} across age groups** "
         f"(highest: {age_gap['best']}; lowest: {age_gap['worst']}). "
