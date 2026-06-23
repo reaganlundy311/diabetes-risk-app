@@ -5,3 +5,5 @@ pyecharts
 streamlit
 pytest
 nbformat
+openai
+shap
