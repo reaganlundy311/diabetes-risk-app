@@ -169,6 +169,19 @@ def friendly_feature_names(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def largest_subgroup_gap(table: pd.DataFrame, metric: str = "sensitivity") -> dict:
+    valid = table.dropna(subset=[metric])
+    if valid.empty:
+        return {"gap": 0.0, "best": "not available", "worst": "not available"}
+    best_row = valid.loc[valid[metric].idxmax()]
+    worst_row = valid.loc[valid[metric].idxmin()]
+    return {
+        "gap": float(best_row[metric] - worst_row[metric]),
+        "best": str(best_row["subgroup"]),
+        "worst": str(worst_row["subgroup"]),
+    }
+
+
 # ──────────────────────────────────────────────────────────────── main app ──
 
 def main():
@@ -426,6 +439,17 @@ def main():
             }),
             height=220,
         )
+
+    bmi_gap = largest_subgroup_gap(bundle["fairness_bmi"])
+    age_gap = largest_subgroup_gap(bundle["fairness_age"])
+    st.markdown("**Week 4 fairness conclusion**")
+    st.info(
+        f"The largest sensitivity gap in this run is **{age_gap['gap']:.2f} across age groups** "
+        f"(highest: {age_gap['best']}; lowest: {age_gap['worst']}). "
+        f"The BMI sensitivity gap is **{bmi_gap['gap']:.2f}**. Lower sensitivity means the model "
+        "misses more true diabetes cases in that subgroup. These gaps should be disclosed and "
+        "investigated before any real-world use. Not medical advice."
+    )
 
     st.divider()
     st.error(DISCLAIMER)
