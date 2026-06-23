@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import zipfile
 from io import BytesIO
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 import numpy as np
 import pandas as pd
@@ -175,7 +175,18 @@ def load_brfss(
     src = path_or_url or BRFSS_URL
     try:
         if str(src).lower().endswith(".zip"):
-            payload = urlopen(src, timeout=30).read() if str(src).startswith("http") else open(src, "rb").read()
+            if str(src).startswith("http"):
+                request = Request(
+                    src,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 diabetes-risk-educational-demo/1.0",
+                        "Accept": "application/zip, application/octet-stream, */*",
+                    },
+                )
+                payload = urlopen(request, timeout=120).read()
+            else:
+                with open(src, "rb") as fh:
+                    payload = fh.read()
             with zipfile.ZipFile(BytesIO(payload)) as zf:
                 xpt_name = next(name for name in zf.namelist() if name.lower().endswith(".xpt"))
                 with zf.open(xpt_name) as fh:
