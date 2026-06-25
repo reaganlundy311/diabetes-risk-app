@@ -1,17 +1,21 @@
-# Model Card — Project 04 Diabetes Risk (Educational)
+# Model Card — Diabetes Risk (Educational)
 
 **SciEncephalon AI · Summer Intern Series 2026**
 
-**Intern:** Reagan Lundy
+**Created by Reagan Lundy**
 
 > **Not medical advice.** This model card describes an educational artifact built
-> by a high-school intern at SciEncephalon AI. It is NOT a regulated medical
-> device, NOT validated for clinical use, and MUST NOT be used to make medical
-> decisions for any real person.
+> to explain how diabetes-risk modeling can be evaluated. It is NOT a regulated
+> medical device, NOT validated for clinical use, and MUST NOT be used to make
+> medical decisions for any real person.
 
 ## 1. Model details
 
-- **Owner.** SciEncephalon AI Summer Intern Series 2026 — Project 04.
+- **Plain-English summary.** This demo estimates diabetes risk from simple,
+  non-invasive information such as BMI, age group, general health, blood
+  pressure history, and recent health days. It is meant to teach how medical AI
+  models should be evaluated, explained, and limited.
+- **Owner.** SciEncephalon AI Summer Intern Series 2026.
 - **Author.** Reagan Lundy.
 - **Architecture.** `sklearn.ensemble.HistGradientBoostingClassifier`, wrapped in
   `sklearn.calibration.CalibratedClassifierCV` with isotonic regression
@@ -26,13 +30,15 @@
 
 ## 2. Intended use
 
-- **In scope.** Classroom demonstration of (a) calibrated probability
-  estimation, (b) sensitivity / specificity threshold sweeps, (c) lift/gain
-  targeting analysis, (d) subgroup performance review, and (e) the separation
-  between a prediction layer and a live-or-template messaging layer.
+- **In scope.** Classroom demonstration of how to estimate risk, explain a
+  prediction, choose a threshold, compare datasets, review subgroup performance,
+  and turn model output into safe plain-language guidance.
 - **Out of scope.** Clinical decision support, screening at the point of care,
   insurance underwriting, employment screening, or any use that affects a
   real person.
+- **User audience.** The Streamlit app is written for people who may not know
+  coding, machine learning, or diabetes terminology. Technical terms are paired
+  with plain-English explanations inside the app.
 
 ## 3. Training data
 
@@ -58,9 +64,30 @@ Reported on the held-out 25% test split with the default 0.50 threshold.
 | Specificity | ~0.82 | Of true negatives, how many we leave alone. |
 | Brier score | ~0.15 | Probability-calibration quality (lower is better). |
 
-*Fill these in with your real Week-2 numbers after re-running on PIMA.*
+These values may change depending on whether the app is using the public CDC
+survey data or the synthetic backup data.
 
-## 5. Known limitations & biases
+## 5. What users see in the app
+
+- **Risk estimate.** A percentage, such as `0.63` or `63%`, means the model
+  estimates the person is in a higher-risk group based on patterns learned from
+  the training data. It is not a diagnosis.
+- **Threshold.** The threshold decides when the app labels someone as a
+  higher-risk band. A lower threshold catches more possible diabetes cases but
+  also creates more false alarms.
+- **Calibration curve.** This checks whether the percentage is believable. If
+  many people receive a 70% estimate, about 70% should actually have diabetes
+  in the test data.
+- **Lift/gain table.** This shows whether targeting the highest-risk 10%, 20%,
+  or 30% of users finds more diabetes cases than random selection.
+- **Feature explanation.** This shows which inputs pushed the estimate upward or
+  downward for one person. It explains the model's behavior, not medical cause.
+- **AI coach.** The coach gives safe, educational lifestyle suggestions based
+  on risk band and simple flags like high BMI, older age, high glucose in PIMA
+  mode, or high blood-pressure history in BRFSS mode. It refuses medications,
+  doses, prescriptions, and calorie targets.
+
+## 6. Known limitations & biases
 
 - **Survey and cohort bias.** BRFSS is self-reported survey data; PIMA is
   exclusively Pima women aged 21+. The model has NOT been validated for clinical
@@ -83,7 +110,7 @@ Reported on the held-out 25% test split with the default 0.50 threshold.
   attribution by comparing the prediction to one-feature-at-a-time median
   replacements. This is an educational explanation, not causal proof.
 
-## 6. Ethical considerations
+## 7. Ethical considerations
 
 - Every user-facing output (notebook, Streamlit app, coach message) includes
   **"not medical advice"** verbatim.
@@ -92,16 +119,16 @@ Reported on the held-out 25% test split with the default 0.50 threshold.
 - The fairness layer (`src/fairness.py`) reports per-subgroup AUC, sensitivity,
   and specificity by BMI / age group. A meaningful gap should be disclosed
   before any external demo.
-- **Observed fairness gap.** In the Week-4 audit, the largest plain-English
-  concern was sensitivity across age groups. The model caught true positives
-  more reliably in older groups than younger groups, likely because diabetes
-  prevalence is higher in older groups. Lower sensitivity in younger groups
-  means the model may miss more true cases there, so this gap should be
-  disclosed and investigated before any non-classroom use.
+- **Observed subgroup gap.** The largest plain-English concern was sensitivity
+  across age groups. The model caught true positives more reliably in older
+  groups than younger groups, likely because diabetes prevalence is higher in
+  older groups. Lower sensitivity in younger groups means the model may miss
+  more true cases there, so this gap should be disclosed and investigated
+  before any real-world use.
 
-## 7. Caveat that always applies
+## 8. Caveat that always applies
 
 This is a learning artifact. If you, the reader, are worried about your own
 diabetes risk, please see a primary-care provider. They can order an A1C test
-that takes minutes and reflects three months of blood sugar — a real screen,
-not a probability from a high-school project.
+that reflects roughly three months of blood sugar — a real screen, not a
+probability estimate from this demo.
