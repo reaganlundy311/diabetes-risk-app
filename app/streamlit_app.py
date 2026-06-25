@@ -219,7 +219,7 @@ def main():
         )
         st.warning(DISCLAIMER)
 
-    st.title("Project 04 — Diabetes Risk (Educational Demo)")
+    st.title("Diabetes Risk (Educational Demo)")
     st.caption("SciEncephalon AI · Summer Intern Series 2026")
     st.caption("Intern: Reagan Lundy")
     st.warning(DISCLAIMER)
