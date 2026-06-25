@@ -1,4 +1,4 @@
-"""Streamlit app for Project 04 — Diabetes Risk.
+"""Streamlit app for Diabetes Risk.
 
 Run from the project root:
     streamlit run app/streamlit_app.py
@@ -37,6 +37,12 @@ from src.fairness import subgroup_metrics                  # noqa: E402
 DISCLAIMER = (
     "**Not medical advice.** This demo is an educational exercise. It is *not* a "
     "diagnostic tool. Talk to a qualified healthcare provider for any medical decision."
+)
+
+PLAIN_LANGUAGE_INTRO = (
+    "Enter a few health-related details to see an estimated diabetes-risk score. "
+    "The page also explains what influenced the score, how the model performs, "
+    "and where the model may be less reliable."
 )
 
 def get_secret(name: str, default: str | None = None) -> str | None:
@@ -192,9 +198,9 @@ def main():
     )
 
     model_mode = st.sidebar.selectbox(
-        "Model/data source",
+        "Data source",
         ["CDC BRFSS survey model", "PIMA clinical-style model"],
-        help="BRFSS is the broad CDC survey stretch goal. PIMA is kept as a smaller clinical-style comparison.",
+        help="Use the CDC survey model for the main experience. PIMA is a smaller research dataset included for comparison.",
     )
     bundle = get_model_and_eval(model_mode)
     model       = bundle["model"]
@@ -207,21 +213,22 @@ def main():
     with st.sidebar:
         st.title("Model card")
         st.caption("SciEncephalon AI · Summer Intern Series 2026")
-        st.caption("Intern: Reagan Lundy")
+        st.caption("Created by Reagan Lundy")
         st.markdown(
-            "- **Model:** HistGradientBoosting + isotonic calibration.\n"
-            "- **Default data:** CDC BRFSS survey sample with synthetic fallback.\n"
-            "- **Alternate data:** PIMA clinical-style model remains available.\n"
-            "- **Explanations:** per-patient SHAP-style feature attribution.\n"
+            "- **What it does:** estimates diabetes risk from non-invasive inputs.\n"
+            "- **Main data:** CDC BRFSS public health survey sample.\n"
+            "- **Backup data:** synthetic survey-shaped data if the CDC file cannot load.\n"
+            "- **Comparison data:** PIMA clinical-style dataset.\n"
+            "- **Explanation:** shows which inputs pushed the estimate up or down.\n"
             "- **AI coach:** OpenAI-powered when configured; safe template fallback otherwise.\n"
-            "- **Intended use:** Educational only.\n"
-            "- **Known limitation:** Survey and PIMA models are educational, not clinical."
+            "- **Important limit:** educational demo only, not a medical diagnosis."
         )
         st.warning(DISCLAIMER)
 
     st.title("Diabetes Risk (Educational Demo)")
     st.caption("SciEncephalon AI · Summer Intern Series 2026")
-    st.caption("Intern: Reagan Lundy")
+    st.caption("Created by Reagan Lundy")
+    st.write(PLAIN_LANGUAGE_INTRO)
     st.warning(DISCLAIMER)
 
     col_left, col_right = st.columns([1, 1])
@@ -260,8 +267,9 @@ def main():
                     age      = st.number_input("Age", 18, 100, 40)
 
             threshold = st.slider(
-                "Decision threshold (cut-off for 'high risk')",
+                "Decision threshold for flagging higher risk",
                 0.05, 0.95, 0.50, step=0.01,
+                help="If the estimated risk is above this number, the app labels it as a higher-risk band. Lower thresholds catch more possible cases but create more false alarms.",
             )
             submitted = st.form_submit_button("Estimate risk")
 
@@ -297,12 +305,12 @@ def main():
             st.metric("Estimated risk", f"{risk*100:.1f} %",
                       delta=f"threshold = {threshold:.2f}")
             st.write(
-                f"**At threshold {nearest['threshold']:.2f}:** "
-                f"sensitivity = {nearest['sensitivity']:.2f}, "
-                f"specificity = {nearest['specificity']:.2f}"
+                f"**Using a {nearest['threshold']:.2f} threshold:** "
+                f"the model catches {nearest['sensitivity']:.0%} of true diabetes cases "
+                f"and correctly leaves alone {nearest['specificity']:.0%} of non-diabetes cases."
             )
             label = "HIGH risk band" if risk >= threshold else "Below threshold"
-            st.info(f"Decision: **{label}**")
+            st.info(f"Risk band: **{label}**")
 
             st.subheader("AI Lifestyle Coach")
             api_key = get_secret("OPENAI_API_KEY")
@@ -311,7 +319,7 @@ def main():
             coach_mode = "OpenAI-powered AI coach" if use_live_coach else "Safe template AI coach"
             st.info(
                 f"**{coach_mode}**\n\n"
-                "This OpenAI-style coach turns the risk estimate into plain-English lifestyle suggestions. "
+                "This coach turns the risk estimate into plain-English lifestyle suggestions. "
                 "It is education-only and will not prescribe medication, doses, or calorie targets."
             )
             msg = llm_compose(
@@ -322,9 +330,9 @@ def main():
                 model=model_name or "gpt-4.1-mini",
             )
             st.markdown(msg)
-            st.subheader("Per-patient feature attribution")
+            st.subheader("What influenced this estimate")
             explanation = friendly_feature_names(feature_attribution(model, row.iloc[0], bundle["X_test"]).head(6))
-            st.caption("Positive values pushed this patient's risk upward; negative values pushed it downward.")
+            st.caption("Positive numbers pushed the estimate upward. Negative numbers pushed it downward. This explains the model's behavior; it does not prove medical cause.")
             st.dataframe(
                 explanation[["feature", "patient_value", "baseline_value", "risk_contribution", "direction", "method"]].style.format({
                     "patient_value": "{:.2f}",
@@ -337,7 +345,7 @@ def main():
 
     # ── Charts ────────────────────────────────────────────────────────────────
     with col_right:
-        st.subheader("Threshold trade-off (test set)")
+        st.subheader("Choosing a risk threshold")
         st.dataframe(
             sweep.style.format({
                 "threshold":   "{:.2f}",
@@ -348,21 +356,20 @@ def main():
             height=300,
         )
         st.caption(
-            "Sensitivity = catch sick patients.  Specificity = don't alarm healthy patients.  "
-            "Lower thresholds catch more sick patients but also raise more false alarms."
+            "Sensitivity means catching people who truly have diabetes. Specificity means correctly not flagging people who do not. "
+            "Lower thresholds catch more possible cases but also create more false alarms."
         )
 
         st.subheader("Calibration curve")
         st.line_chart(calibration_chart_data(centers, observed), height=320)
         st.caption(
-            "Well-calibrated: when the model says 70% it really happens ~70% of the time.  "
-            "Well-calibrated is NOT the same as 'accurate'."
+            "Calibration checks whether the risk number is believable. For example, if many people receive a 70% estimate, about 70% of them should actually have diabetes in the test data."
         )
 
     st.subheader("Dataset comparison")
     st.caption(
-        "The default app trains on CDC BRFSS survey data when reachable and falls back to synthetic survey-shaped data if needed. "
-        "The PIMA mode remains available as a smaller clinical-style comparison with median-imputed zero measurements."
+        "This compares the main public-health survey model with backup or comparison data. "
+        "CDC BRFSS is the main dataset; PIMA is a smaller research dataset included for context."
     )
     st.dataframe(
         bundle["comparison"].style.format({
@@ -376,14 +383,14 @@ def main():
     )
     if "fallback" in bundle["data_source"]:
         st.warning(
-            "The selected public dataset was not reachable in this run, so the app used synthetic fallback data. "
-            "Run again with internet access for the real dataset results."
+            "The selected public dataset could not load in this run, so the app used synthetic backup data. "
+            "The app still works for demonstration, but real CDC data is preferred for final results."
         )
 
-    st.subheader("Lift and gain targeting analysis")
+    st.subheader("Finding more diabetes cases by targeting higher-risk groups")
     st.caption(
-        "Patients are ranked from highest to lowest predicted risk. The table shows what percent of diabetic patients "
-        "would be identified by targeting the top 10%, 20%, 30%, and so on. Lift compares that targeting to random selection."
+        "This section asks: if we focus on the highest-risk 10%, 20%, or 30% of people, "
+        "what percent of diabetes cases would we identify? Lift shows how much better that is than choosing people at random."
     )
     lift_left, lift_right = st.columns([1, 1])
     with lift_left:
@@ -411,11 +418,15 @@ def main():
     with lift_right:
         st.line_chart(gain_chart_data(lift_gain), height=330)
         st.caption(
-            "Example: if the 20% row shows 45% identified and 2.25x lift, the top-risk 20% contains "
-            "45% of diabetic patients, which is 2.25 times better than random targeting."
+            "Example: if the 20% row shows 45% identified and 2.25x lift, the highest-risk 20% contains "
+            "45% of diabetes cases, which is 2.25 times better than random selection."
         )
 
-    st.subheader("Subgroup performance audit")
+    st.subheader("Checking whether the model works similarly for different groups")
+    st.caption(
+        "These tables compare performance across BMI and age groups. This matters because a model can look good overall "
+        "but still miss more cases for one group than another."
+    )
     fairness_left, fairness_right = st.columns(2)
     with fairness_left:
         st.markdown("**BMI buckets**")
@@ -444,9 +455,9 @@ def main():
     age_gap = largest_subgroup_gap(bundle["fairness_age"])
     st.markdown("**Model performance across groups**")
     st.info(
-        f"The largest sensitivity gap in this run is **{age_gap['gap']:.2f} across age groups** "
+        f"The largest case-catching gap in this run is **{age_gap['gap']:.2f} across age groups** "
         f"(highest: {age_gap['best']}; lowest: {age_gap['worst']}). "
-        f"The BMI sensitivity gap is **{bmi_gap['gap']:.2f}**. Lower sensitivity means the model "
+        f"The BMI case-catching gap is **{bmi_gap['gap']:.2f}**. Lower sensitivity means the model "
         "misses more true diabetes cases in that subgroup. These gaps should be disclosed and "
         "investigated before any real-world use. Not medical advice."
     )
