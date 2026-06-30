@@ -1,4 +1,4 @@
-"""Pipeline for Project 04 — Diabetes Risk.
+"""Pipeline for the Diabetes Risk educational demo.
 
 Functions
 ---------
