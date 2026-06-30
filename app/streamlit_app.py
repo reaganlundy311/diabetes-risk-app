@@ -45,6 +45,12 @@ PLAIN_LANGUAGE_INTRO = (
     "and where the model may be less reliable."
 )
 
+BRFSS_AGE_LABELS = {
+    1: "18-24", 2: "25-29", 3: "30-34", 4: "35-39", 5: "40-44",
+    6: "45-49", 7: "50-54", 8: "55-59", 9: "60-64", 10: "65-69",
+    11: "70-74", 12: "75-79", 13: "80 or older",
+}
+
 def get_secret(name: str, default: str | None = None) -> str | None:
     try:
         return st.secrets.get(name, os.environ.get(name, default))
@@ -188,6 +194,17 @@ def largest_subgroup_gap(table: pd.DataFrame, metric: str = "sensitivity") -> di
     }
 
 
+def source_label(source: str) -> str:
+    labels = {
+        "cdc_brfss": "CDC BRFSS public survey data",
+        "cdc_brfss_sample": "CDC BRFSS public survey sample",
+        "real_pima": "PIMA research data (median-imputed)",
+        "synthetic_brfss_fallback": "synthetic BRFSS-shaped backup data",
+        "synthetic_fallback": "synthetic PIMA-shaped backup data",
+    }
+    return labels.get(source, source.replace("_", " "))
+
+
 # ──────────────────────────────────────────────────────────────── main app ──
 
 def main():
@@ -215,14 +232,21 @@ def main():
         st.caption("SciEncephalon AI · Summer Intern Series 2026")
         st.caption("Created by Reagan Lundy")
         st.markdown(
-            "- **What it does:** estimates diabetes risk from non-invasive inputs.\n"
-            "- **Main data:** CDC BRFSS public health survey sample.\n"
-            "- **Backup data:** synthetic survey-shaped data if the CDC file cannot load.\n"
-            "- **Comparison data:** PIMA clinical-style dataset.\n"
-            "- **Explanation:** shows which inputs pushed the estimate up or down.\n"
-            "- **AI coach:** OpenAI-powered when configured; safe template fallback otherwise.\n"
-            "- **Important limit:** educational demo only, not a medical diagnosis."
+            f"- **Purpose:** estimate diabetes risk for education.\n"
+            f"- **Data used now:** {source_label(bundle['data_source'])}.\n"
+            "- **Model:** calibrated gradient boosting.\n"
+            "- **Output:** an estimate, not a diagnosis.\n"
+            "- **Privacy:** inputs are not saved by this app."
         )
+        with st.expander("Important model limitations", expanded=True):
+            st.markdown(
+                "- The model has **not** been clinically validated.\n"
+                "- Survey answers may be incomplete or inaccurate.\n"
+                "- Synthetic backup data is not real patient data.\n"
+                "- PIMA only represents Pima women age 21 and older.\n"
+                "- Performance can differ across age and BMI groups.\n"
+                "- A risk percentage cannot confirm or rule out diabetes."
+            )
         st.warning(DISCLAIMER)
 
     st.title("Diabetes Risk (Educational Demo)")
@@ -245,7 +269,7 @@ def main():
                         "Age group",
                         list(range(1, 14)),
                         index=6,
-                        format_func=lambda x: f"BRFSS age group {x}",
+                        format_func=lambda x: BRFSS_AGE_LABELS[x],
                     )
                     sex_female = st.selectbox("Sex", [0, 1], index=1, format_func=lambda x: "Female" if x else "Male")
                     high_bp = st.selectbox("Ever told you had high blood pressure?", [0, 1], index=0, format_func=lambda x: "Yes" if x else "No")
@@ -285,7 +309,8 @@ def main():
                     "mental_health_bad_days": mental_health_bad_days,
                     "checkup_within_year": checkup_within_year,
                 }])[feature_cols]
-                coach_row = {"bmi": bmi, "age": 21 + int(age_group) * 5, "blood_pressure": 90 if high_bp else 72}
+                coach_age = 82 if age_group == 13 else 20 + int(age_group) * 5
+                coach_row = {"bmi": bmi, "age": coach_age, "blood_pressure": 90 if high_bp else 72}
             else:
                 row = pd.DataFrame([{
                     "pregnancies":    pregnancies,
@@ -381,6 +406,10 @@ def main():
         }),
         hide_index=True,
     )
+    st.caption(
+        "All numbers above are calculated on the same held-out 25% test split using a 0.50 threshold. "
+        "AUC and accuracy are higher when better; Brier score is lower when better."
+    )
     if "fallback" in bundle["data_source"]:
         st.warning(
             "The selected public dataset could not load in this run, so the app used synthetic backup data. "
@@ -460,6 +489,14 @@ def main():
         f"The BMI case-catching gap is **{bmi_gap['gap']:.2f}**. Lower sensitivity means the model "
         "misses more true diabetes cases in that subgroup. These gaps should be disclosed and "
         "investigated before any real-world use. Not medical advice."
+    )
+
+    st.subheader("What this model cannot tell you")
+    st.warning(
+        "This estimate cannot diagnose diabetes, replace a blood test, or prove that an input caused the result. "
+        "The model may perform differently for people who are unlike its training data. Survey data can contain "
+        "self-report errors, synthetic backup data is not real patient data, and PIMA represents only Pima women "
+        "age 21 and older. Use the result only to learn how risk models work. Not medical advice."
     )
 
     st.divider()
