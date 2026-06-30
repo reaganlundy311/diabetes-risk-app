@@ -1,4 +1,4 @@
-"""Lifestyle coach for Project 04.
+"""Lifestyle coach for the Diabetes Risk educational demo.
 
 `llm_compose(patient_row)` reads the patient's most-actionable inputs
 (BMI, glucose, blood pressure, age) and returns a personalized, plain-English,
