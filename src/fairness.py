@@ -1,4 +1,4 @@
-"""Subgroup fairness metrics for Project 04.
+"""Subgroup fairness metrics for the Diabetes Risk educational demo.
 
 `subgroup_metrics(model, X, y, by)` computes per-subgroup AUC, sensitivity,
 specificity, and prevalence.
